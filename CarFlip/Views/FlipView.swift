@@ -2,168 +2,320 @@ import SwiftUI
 
 struct FlipView: View {
     @ObservedObject var carManager: CarManager
+    @Binding var selectedTab: AppTab
+
+    /// Cars shown on consecutive half-turns of the coin; the last one is the winner.
+    @State private var faces: [Car?] = [nil]
+    @State private var angle = 0.0
     @State private var isFlipping = false
-    @State private var selectedCar: Car?
-    @State private var flipRotation = 0.0
-    @State private var showAlert = false
-    @State private var showName = false
-    
+    @State private var result: Car?
+    @State private var flipCount = 0
+    @State private var landCount = 0
+
+    private let coinSize: CGFloat = 250
+
     var body: some View {
-        VStack {
-            Spacer()
-            
-            if carManager.cars.count < 2 {
-                ContentUnavailableView {
-                    Label("Not Enough Cars", systemImage: "car.2.fill")
-                } description: {
-                    Text("You need at least 2 cars to flip between them")
-                } actions: {
-                    NavigationLink(destination: CarListView(carManager: carManager)) {
-                        Text("Add Cars")
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            } else {
-                if let car = selectedCar {
-                    VStack(spacing: 20) {
-                        // Coin-like view with car image
-                        ZStack {
-                            Circle()
-                                .fill(Color.blue.opacity(0.1))
-                                .frame(width: 250, height: 250)
-                                .shadow(radius: 5)
-                            
-                            if let image = car.image {
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 220, height: 220)
-                                    .clipShape(Circle())
-                            } else {
-                                Image(systemName: "car.fill")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 120, height: 120)
-                                    .foregroundColor(.blue)
-                            }
-                            
-                            // Gold coin border
-                            Circle()
-                                .stroke(Color.yellow.opacity(0.8), lineWidth: 10)
-                                .frame(width: 250, height: 250)
-                        }
-                        .rotation3DEffect(
-                            .degrees(flipRotation),
-                            axis: (x: 0, y: 1, z: 0)
-                        )
-                        
-                        // Car name shown only after flipping is done
-                        if showName {
-                            Text(car.name)
-                                .font(.title)
-                                .bold()
-                                .transition(.opacity)
-                        }
-                    }
-                    .padding()
+        ZStack {
+            AmbientBackground()
+
+            VStack(spacing: 0) {
+                header
+                    .padding(.top, 12)
+
+                Spacer(minLength: 16)
+
+                if carManager.cars.count < 2 {
+                    emptyState
                 } else {
-                    Text("Tap Flip to choose a car")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
+                    stage
                 }
-                
-                Spacer()
-                
-                Button {
-                    performFlip()
-                } label: {
-                    Text("FLIP")
-                        .font(.title)
-                        .bold()
-                        .frame(minWidth: 200)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
-                .padding()
-                .disabled(isFlipping)
             }
-            
-            Spacer()
+            .padding(.horizontal, 24)
+            .padding(.bottom, 20)
         }
-        .navigationTitle("Car Flip")
-        .alert("Car Selected", isPresented: $showAlert) {
-            Button("OK") { }
-        } message: {
-            if let car = selectedCar {
-                Text("You'll drive \(car.name) today!")
+        .onAppear(perform: syncWithToday)
+        .onChange(of: carManager.cars) { syncWithToday() }
+        .sensoryFeedback(.impact(weight: .light), trigger: flipCount)
+        .sensoryFeedback(.impact(weight: .heavy), trigger: landCount)
+    }
+
+    // MARK: - Sections
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Eyebrow(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+            Text("Which ride\ntoday?")
+                .font(.badge(34))
+                .lineSpacing(-4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var stage: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            
+            ZStack {
+                landingPulse
+                CoinView(angle: angle, faces: faces, size: coinSize)
             }
+            .contentShape(Circle())
+            .onTapGesture(perform: flip)
+            .accessibilityElement()
+            .accessibilityLabel(result.map { "Coin showing \($0.name)" } ?? "Coin")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { flip() }
+
+            resultLabel
+                .frame(height: 96)
+                .padding(.top, 8)
+
+            Spacer(minLength: 16)
+
+            Button(action: flip) {
+                Label(result == nil ? "Flip the coin" : "Flip again", systemImage: "arrow.trianglehead.2.clockwise")
+                    .textCase(.uppercase)
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isFlipping)
+            .opacity(isFlipping ? 0.6 : 1)
+            .animation(.easeInOut(duration: 0.2), value: isFlipping)
         }
     }
-    
-    private func performFlip() {
-        guard carManager.cars.count >= 2 else { return }
-        
+
+    private var resultLabel: some View {
+        VStack(spacing: 6) {
+            if isFlipping {
+                Eyebrow("Flipping…")
+                    .transition(.opacity)
+            } else if let result {
+                Eyebrow("Today you're driving")
+                Text(result.name)
+                    .font(.badge(30))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.6)
+                    .foregroundStyle(Theme.brandGradient)
+                    .id(result.id)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.6).combined(with: .opacity),
+                        removal: .opacity
+                    ))
+            } else {
+                Eyebrow("Tap the coin to decide")
+                    .transition(.opacity)
+            }
+        }
+        .animation(.spring(response: 0.45, dampingFraction: 0.6), value: result?.id)
+        .animation(.easeInOut(duration: 0.2), value: isFlipping)
+    }
+
+    private var landingPulse: some View {
+        Circle()
+            .stroke(Theme.gold, lineWidth: 3)
+            .frame(width: coinSize, height: coinSize)
+            .keyframeAnimator(initialValue: Pulse(), trigger: landCount) { view, pulse in
+                view
+                    .scaleEffect(pulse.scale)
+                    .opacity(pulse.opacity)
+            } keyframes: { _ in
+                KeyframeTrack(\.scale) {
+                    LinearKeyframe(1, duration: 0.01)
+                    CubicKeyframe(1.55, duration: 0.9)
+                }
+                KeyframeTrack(\.opacity) {
+                    LinearKeyframe(0.9, duration: 0.01)
+                    CubicKeyframe(0, duration: 0.9)
+                }
+            }
+            .allowsHitTesting(false)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 0) {
+            CoinView(angle: 0, faces: [nil], size: coinSize * 0.8)
+
+            VStack(spacing: 10) {
+                Text("Build your garage")
+                    .font(.badge(22))
+                Text("Add at least two cars and let the coin pick your daily ride.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 28)
+
+            Spacer(minLength: 16)
+
+            Button {
+                selectedTab = .garage
+            } label: {
+                Label("Open garage", systemImage: "plus")
+                    .textCase(.uppercase)
+            }
+            .buttonStyle(PrimaryButtonStyle())
+        }
+    }
+
+    // MARK: - Flipping
+
+    private func syncWithToday() {
+        guard !isFlipping else { return }
+        let todaysCar = carManager.getRecordForDate(Date()).flatMap { carManager.car(withId: $0.carId) }
+        result = todaysCar
+        faces = [todaysCar]
+        angle = 0
+    }
+
+    private func flip() {
+        let cars = carManager.cars
+        guard !isFlipping, cars.count >= 2, let winner = cars.randomElement() else { return }
+
+        // Every half-turn reveals a new face; neighbours never repeat so each turn visibly changes.
+        var sequence: [Car?] = [faces.last ?? nil]
+        for _ in 0..<Int.random(in: 7...10) {
+            sequence.append(cars.filter { $0 != sequence.last }.randomElement())
+        }
+        if sequence.last == winner {
+            sequence.append(cars.filter { $0 != winner }.randomElement())
+        }
+        sequence.append(winner)
+
+        faces = sequence
+        angle = 0
         isFlipping = true
-        showName = false
-        
-        // Randomize number of flips between 3 and 7
-        let numFlips = Int.random(in: 3...7)
-        let totalDuration = Double.random(in: 1.5...2.5) // Random duration between 1.5 and 2.5 seconds
-        let flipDuration = totalDuration / Double(numFlips)
-        
-        // Animate the initial flip
-        animateFlips(numFlips: numFlips, flipDuration: flipDuration, currentFlip: 0, availableCars: carManager.cars)
+        flipCount += 1
+
+        let halfTurns = Double(sequence.count - 1)
+        withAnimation(.timingCurve(0.2, 0.7, 0.25, 1, duration: 2.6)) {
+            angle = halfTurns * 180
+        } completion: {
+            land(on: winner)
+        }
     }
-    
-    private func animateFlips(numFlips: Int, flipDuration: Double, currentFlip: Int, availableCars: [Car]) {
-        // Base case: completed all flips
-        if currentFlip >= numFlips {
-            // Show the name after all flips are done
-            withAnimation(.easeIn(duration: 0.3)) {
-                showName = true
-            }
-            
-            // Show alert and reset flipping state
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                showAlert = true
-                isFlipping = false
-            }
-            return
+
+    private func land(on winner: Car) {
+        // Collapse to a single face so the next flip starts from an upright coin.
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            faces = [winner]
+            angle = 0
         }
-        
-        // Animate the current flip
-        withAnimation(.easeInOut(duration: flipDuration / 2)) {
-            flipRotation += 180
+        carManager.recordFlip(car: winner)
+        isFlipping = false
+        result = winner
+        landCount += 1
+    }
+}
+
+private struct Pulse {
+    var scale: CGFloat = 1
+    var opacity: Double = 0
+}
+
+// MARK: - Coin
+
+/// A two-sided coin tossed end over end. Which car it shows is derived from the
+/// current angle, so the face swaps exactly when the coin is edge-on.
+struct CoinView: View, Animatable {
+    var angle: Double
+    let faces: [Car?]
+    let size: CGFloat
+
+    var animatableData: Double {
+        get { angle }
+        set { angle = newValue }
+    }
+
+    private var halfTurn: Int {
+        let slot = Int(((angle + 90) / 180).rounded(.down))
+        return min(max(slot, 0), faces.count - 1)
+    }
+
+    /// 0 → 1 → 0 over the whole toss; drives the arc and the shadow.
+    private var airtime: Double {
+        let total = Double(faces.count - 1) * 180
+        guard total > 0 else { return 0 }
+        return sin(.pi * min(max(angle / total, 0), 1))
+    }
+
+    var body: some View {
+        let showsBack = !halfTurn.isMultiple(of: 2)
+        let facing = abs(cos(angle * .pi / 180))
+
+        ZStack {
+            Ellipse()
+                .fill(.black.opacity(0.28 - airtime * 0.18))
+                .frame(width: size * (0.75 - airtime * 0.3), height: size * 0.09)
+                .blur(radius: 10 + airtime * 8)
+                .offset(y: size * 0.62)
+
+            CoinFace(car: faces[halfTurn], size: size)
+                // The back side is seen through the coin, so un-mirror it.
+                .scaleEffect(y: showsBack ? -1 : 1)
+                .brightness(-0.25 * (1 - facing))
+                .rotation3DEffect(.degrees(angle), axis: (x: 1, y: 0, z: 0), perspective: 0.35)
+                .scaleEffect(1 + airtime * 0.16)
+                .offset(y: -airtime * size * 0.45)
         }
-        
-        // After half the flip, update the car
-        DispatchQueue.main.asyncAfter(deadline: .now() + flipDuration / 2) {
-            // For each flip, choose a random car from all available cars
-            // If it's the last flip, exclude the current car to ensure a change
-            var carsToChooseFrom = availableCars
-            
-            if currentFlip == numFlips - 1 && availableCars.count > 1 {
-                // For the final flip, ensure we don't pick the same car again
-                if let selectedCar = selectedCar {
-                    carsToChooseFrom.removeAll { $0.id == selectedCar.id }
+        .frame(width: size, height: size)
+    }
+}
+
+struct CoinFace: View {
+    let car: Car?
+    let size: CGFloat
+
+    var body: some View {
+        let rim = size * 0.07
+
+        ZStack {
+            Circle()
+                .fill(Theme.goldGradient)
+
+            // Reeded inner edge
+            Circle()
+                .strokeBorder(
+                    Theme.goldDeep.opacity(0.55),
+                    style: StrokeStyle(lineWidth: rim * 0.45, dash: [1.5, 2.5])
+                )
+                .padding(rim * 0.3)
+
+            Group {
+                if car == nil {
+                    ZStack {
+                        Theme.brandGradient
+                        Text("?")
+                            .font(.badge(size * 0.4, weight: .black))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+                    }
+                } else {
+                    CarArtwork(car: car)
                 }
             }
-            
-            // Pick a random car for this flip
-            let nextCar = carsToChooseFrom.randomElement() ?? availableCars.first!
-            selectedCar = nextCar
-            
-            // For the final car selection, record it
-            if currentFlip == numFlips - 1 {
-                carManager.recordFlip(car: nextCar)
-            }
-            
-            // Recurse to animate the next flip
-            DispatchQueue.main.asyncAfter(deadline: .now() + flipDuration / 2) {
-                animateFlips(numFlips: numFlips, flipDuration: flipDuration, currentFlip: currentFlip + 1, availableCars: availableCars)
-            }
+            .clipShape(Circle())
+            .overlay(Circle().strokeBorder(Theme.goldDeep.opacity(0.8), lineWidth: 2))
+            .padding(rim)
+
+            // Glossy highlight
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.45), .white.opacity(0)],
+                        startPoint: .topLeading,
+                        endPoint: .center
+                    )
+                )
+                .blendMode(.plusLighter)
+                .allowsHitTesting(false)
         }
+        .frame(width: size, height: size)
+        .shadow(color: Theme.goldDeep.opacity(0.35), radius: 12, y: 6)
     }
-} 
+}
+
+#Preview {
+    FlipView(carManager: CarManager(), selectedTab: .constant(.flip))
+}

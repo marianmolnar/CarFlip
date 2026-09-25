@@ -19,6 +19,15 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "1.1",
+          "buildVersion": "2",
+          "date": "2026-09-25",
+          "localizedDescription": "Kompletně nový vzhled.\n\n• Oprava: fotky se při hodu už nepřevracejí\n• Zlatá mince s realistickým hodem a haptikou\n• Garáž s kartami aut a možností úprav\n• Kalendář s fotkami aut a měsíčním přehledem\n• Férové losování",
+          "downloadURL": "https://github.com/marianmolnar/CarFlip/releases/download/v1.1/CarFlip.ipa",
+          "size": 1511837,
+          "minOSVersion": "18.2"
+        },
+        {
           "version": "1.0",
           "buildVersion": "1",
           "date": "2026-09-25",
