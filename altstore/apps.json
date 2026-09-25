@@ -1,0 +1,38 @@
+{
+  "name": "CarFlip",
+  "identifier": "cz.molmar.source",
+  "subtitle": "Nechte los rozhodnout, kterým autem pojedete.",
+  "description": "Oficiální AltStore source pro aplikaci CarFlip.",
+  "iconURL": "https://raw.githubusercontent.com/marianmolnar/CarFlip/main/altstore/icon.png",
+  "website": "https://github.com/marianmolnar/CarFlip",
+  "tintColor": "#3D5AF1",
+  "apps": [
+    {
+      "name": "CarFlip",
+      "bundleIdentifier": "cz.molmar.CarFlip",
+      "developerName": "Marian Molnar",
+      "subtitle": "Které auto dnes? Hoď si mincí.",
+      "localizedDescription": "CarFlip vám pomůže rozhodnout, kterým autem dnes pojedete.\n\n• Přidejte auta s názvem a fotkou\n• Náhodně vyberte auto s animovaným hodem\n• Prohlížejte historii výběrů v kalendáři",
+      "iconURL": "https://raw.githubusercontent.com/marianmolnar/CarFlip/main/altstore/icon.png",
+      "tintColor": "#3D5AF1",
+      "category": "utilities",
+      "screenshots": [],
+      "versions": [
+        {
+          "version": "1.0",
+          "buildVersion": "1",
+          "date": "2026-09-25",
+          "localizedDescription": "První vydání.",
+          "downloadURL": "https://github.com/marianmolnar/CarFlip/releases/download/v1.0/CarFlip.ipa",
+          "size": 1317567,
+          "minOSVersion": "18.2"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {}
+      }
+    }
+  ],
+  "news": []
+}
